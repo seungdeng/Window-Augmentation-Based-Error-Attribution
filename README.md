@@ -126,3 +126,8 @@ Evaluated on a single dataset
 Generalization not fully validated
 Does not include error repair stage
 
+MIT License
+
+Copyright (c) 2026 SeungKeon Lee
+
+
