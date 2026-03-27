@@ -5,8 +5,6 @@
   <img width="539" height="864" alt="image" src="https://github.com/user-attachments/assets/b4e81470-badb-4157-a4cd-e09a1b05a1c8" />
 </p>
 
-> Improving Failure Attribution in LLM-based Multi-Agent Systems via Local Context Expansion
-
 ---
 
 ## ✨ Overview
@@ -127,6 +125,8 @@ Demonstrates effectiveness on real execution logs
 Evaluated on a single dataset
 Generalization not fully validated
 Does not include error repair stage
+
+---
 
 MIT License
 
