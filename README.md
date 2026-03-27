@@ -99,8 +99,7 @@ For step \( s_i \):
 ---
 
 ### 📈 Window Size Analysis
-<img width="1030" height="652" alt="image" src="https://github.com/user-attachments/assets/c6438e89-a517-4810-88b1-f417f02edf27" />
-
+<img width="909" height="566" alt="image" src="https://github.com/user-attachments/assets/d45b1cb2-d562-45f4-aeca-d40f66a9db36" />
 
 - Best performance at **window size = 3**
 - Too small → insufficient context  
