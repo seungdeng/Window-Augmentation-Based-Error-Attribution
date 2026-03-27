@@ -1,5 +1,6 @@
-# 🌿 Window-Augmentation Based Methodology for Improving Error Attribution Performance in Multi-Agent Systems
 
+# <p align="center">🌿 Window-Augmentation Based Methodology for Improving Error Attribution Performance in Multi-Agent Systems
+</p>
 <img width="1321" height="588" alt="image" src="https://github.com/user-attachments/assets/dbfa4712-b966-406e-aa7e-640f6d5584e2" />
 <p align="center">
   <img width="539" height="864" alt="image" src="https://github.com/user-attachments/assets/b4e81470-badb-4157-a4cd-e09a1b05a1c8" />
