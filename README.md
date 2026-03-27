@@ -120,6 +120,7 @@ For step \( s_i \):
 Introduces window-based local context modeling
 Improves failure attribution in multi-agent systems
 Demonstrates effectiveness on real execution logs
+
 ⚠️ Limitations
 Evaluated on a single dataset
 Generalization not fully validated
