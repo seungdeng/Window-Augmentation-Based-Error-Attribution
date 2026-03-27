@@ -1,5 +1,8 @@
 # 🌿 Window-Augmentation-Based Error Attribution
 
+<img width="1321" height="588" alt="image" src="https://github.com/user-attachments/assets/dbfa4712-b966-406e-aa7e-640f6d5584e2" />
+<img width="1863" height="279" alt="image" src="https://github.com/user-attachments/assets/f601051a-9ffb-479c-bfb4-2fe0068c024d" />
+
 > Improving Failure Attribution in LLM-based Multi-Agent Systems via Local Context Expansion
 
 ---
@@ -80,6 +83,7 @@ For step \( s_i \):
 
 ### 🏆 Main Results
 
+
 | Method | Step Acc | Agent Acc |
 |--------|---------|----------|
 | (A) All-at-Once | 0.1746 | 0.4444 |
@@ -94,6 +98,8 @@ For step \( s_i \):
 ---
 
 ### 📈 Window Size Analysis
+<img width="1030" height="652" alt="image" src="https://github.com/user-attachments/assets/c6438e89-a517-4810-88b1-f417f02edf27" />
+
 
 - Best performance at **window size = 3**
 - Too small → insufficient context  
