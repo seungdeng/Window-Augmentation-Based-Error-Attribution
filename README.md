@@ -1,7 +1,8 @@
 # 🌿 Window-Augmentation-Based Error Attribution
 
 <img width="1321" height="588" alt="image" src="https://github.com/user-attachments/assets/dbfa4712-b966-406e-aa7e-640f6d5584e2" />
-<img width="1863" height="279" alt="image" src="https://github.com/user-attachments/assets/f601051a-9ffb-479c-bfb4-2fe0068c024d" />
+<img width="539" height="864" alt="image" src="https://github.com/user-attachments/assets/b4e81470-badb-4157-a4cd-e09a1b05a1c8" />
+
 
 > Improving Failure Attribution in LLM-based Multi-Agent Systems via Local Context Expansion
 
