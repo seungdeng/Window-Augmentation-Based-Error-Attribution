@@ -9,7 +9,7 @@ import re
 
 def read_predictions(eval_file: str, keep: str = "first"):
     """
-    Read predictions from a Chunk-Parallel (proposed) evaluation log file.
+    Read predictions from a Window-Augmented (proposed) evaluation log file.
 
     Expected block format (repeats):
       === Final Prediction for <name>.json ===
@@ -101,7 +101,7 @@ def read_predictions(eval_file: str, keep: str = "first"):
             seen.add(fname)
             parsed_count += 1
 
-    print(f"--- Predictions Read from {eval_file} (Chunk-Parallel) ---")
+    print(f"--- Predictions Read from {eval_file} (Window-Augmented) ---")
     print(f"Successfully parsed predictions for {parsed_count} files.")
     if dup_count:
         print(f"Note: Detected {dup_count} duplicate filename block(s). keep='{keep}'.")
