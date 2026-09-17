@@ -1,8 +1,9 @@
 # main_exp — 논문 메인 실험 재현 코드
 
 논문 Table 3 (프로세스 **A / B / C / D**, `Algorithm-Generated` 126건, GPT-4o, 윈도우 크기 3)
-을 재현하는 데 필요한 파일만 **원본 그대로(무수정)** 모아둔 폴더입니다.
-코드 구조·프롬프트는 일절 손대지 않았습니다.
+을 재현하는 데 필요한 파일만 모아둔 폴더입니다.
+A/B/C/D(baseline + window augmentation)와 무관한 실험 코드(Binary Search, Chunk-Parallel)는
+제거하였으며, 그 외 코드 구조·프롬프트는 원본 그대로 두었습니다.
 
 | 프로세스 | 방법 | 설명 |
 |---|---|---|
@@ -38,15 +39,18 @@ main_exp/
             └── step_by_step_gpt-4o_alg_generated (WIN=3).txt
 ```
 
-### 파일 출처 (전부 무수정 복사본)
+### 파일 출처
 
 | 파일 | 원본 위치 |
 |---|---|
-| `Automated_FA/inference.py`, `evaluate*.py`, `Lib/utils.py` | `KTserverbackup/Automated_FA/` |
-| `Automated_FA/Lib/local_model.py` | `Eliceserverbackup/who&when_2stage/Automated_FA/Lib/local_model (1).py` <br>(KT 백업에 이 파일이 빠져 있어 같은 계열 백업에서 그대로 가져옴) |
-| `Who_and_When/Algorithm-Generated/` | `KTserverbackup/Who_and_When/Algorithm-Generated/` (Elice 백업과 바이트 동일) |
-| `outputs/reference/all_at_once_gpt-4o_alg_generated (WIN3).txt` | `KTserverbackup/Automated_FA/outputs/[FINAL]all-at-once/Algorithm-Generated/` |
-| `outputs/reference/step_by_step_gpt-4o_alg_generated (WIN=3).txt` | `KTserverbackup/Automated_FA/outputs/[FINAL]step-by-step/Algorithm-generated/` |
+| `Automated_FA/inference.py`, `evaluate*.py`, `Lib/utils.py` | `KTserverbackup/Automated_FA/` (Binary Search / Chunk-Parallel 관련 코드 제거) |
+| `Automated_FA/Lib/local_model.py` | `Eliceserverbackup/who&when_2stage/Automated_FA/Lib/local_model (1).py` <br>(KT 백업에 이 파일이 빠져 있어 같은 계열 백업에서 가져옴; Binary Search / Chunk-Parallel 관련 코드 제거) |
+| `Who_and_When/Algorithm-Generated/` | `KTserverbackup/Who_and_When/Algorithm-Generated/` (Elice 백업과 바이트 동일, 무수정) |
+| `outputs/reference/all_at_once_gpt-4o_alg_generated (WIN3).txt` | `KTserverbackup/Automated_FA/outputs/[FINAL]all-at-once/Algorithm-Generated/` (무수정) |
+| `outputs/reference/step_by_step_gpt-4o_alg_generated (WIN=3).txt` | `KTserverbackup/Automated_FA/outputs/[FINAL]step-by-step/Algorithm-generated/` (무수정) |
+
+> `inference.py`의 `--method` 선택지도 `all_at_once` / `step_by_step` 두 가지만 남겼습니다
+> (원본에는 이 폴더의 실험과 무관한 `binary_search`, `chunk_parallel` 옵션도 있었습니다).
 
 ---
 
@@ -67,7 +71,7 @@ pip install openai python-dotenv tqdm torch transformers
 
 ## 3. 윈도우 크기 설정 (중요)
 
-`Automated_FA/Lib/utils.py` 351행:
+`Automated_FA/Lib/utils.py` 233행:
 
 ```python
 FINAL_WINDOW_RADIUS = 5   # ← 원본 그대로 두었음

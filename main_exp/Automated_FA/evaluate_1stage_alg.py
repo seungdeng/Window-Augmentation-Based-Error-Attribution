@@ -156,104 +156,8 @@ def evaluate_accuracy(predictions: Dict[str, Dict[str, str]], data_path: str, to
     return agent_accuracy, step_accuracy
 
 # -------------------------------
-# Predictions from Chunk-Top1 (step → role)
+# Predictions from log formats
 # -------------------------------
-
-def read_predictions_chunk_top1(eval_file: str, data_path: str) -> Dict[str, Dict[str, str]]:
-    """
-    각 '--- Analyzing File: <name>.json ---' 블록에서
-    Chunk 라인들을 파싱해 (conf 최대, 동률이면 start 최소) 후보 1개 선택.
-    선택된 chunk의 step을 사용하여 data_path/<name>.json 의 history[step-1].role을
-    예측 에이전트로 사용한다.
-
-    Returns:
-        { "<name>.json": {"predicted_agent": str, "predicted_step": str}, ... }
-    """
-    if not os.path.exists(eval_file):
-        print(f"Error: Evaluation file not found at {eval_file}")
-        return {}
-
-    try:
-        with open(eval_file, "r", encoding="utf-8") as f:
-            data = f.read()
-    except Exception as e:
-        print(f"Error reading evaluation file {eval_file}: {e}")
-        return {}
-
-    data = data.replace("\r\n", "\n")
-
-    analyzing_block_pat = re.compile(
-        r"(?:^|\n)---\s*Analyzing File:\s*([^\n]+?\.json)\s*---\s*\n"
-        r"(.*?)"
-        r"(?=(?:^|\n)---\s*Analyzing File:|\Z)",
-        re.DOTALL | re.IGNORECASE
-    )
-
-    # --- 청크 라인 패턴 (현재 로그 형식 호환) ---
-    #  - '→' 또는 '->' 지원
-    #  - agent=... , step=..., conf=... , reason=... (conf는 같은 줄 또는 다음 줄 "Confidence: x.x")
-    chunk_block_pat = re.compile(
-        r"Chunk\s*\[(\d+):(\d+)\)\s*(?:→|->)\s*"
-        r"(?:(?:agent\s*=\s*([^,]+)\s*,\s*)?)"     # G3: optional agent (앞쪽)
-        r"step\s*=\s*(\d+)\s*,\s*"                 # G4: step
-        r"(?:(?:agent\s*=\s*([^,]+)\s*,\s*)?)"     # G5: optional agent (뒤쪽)
-        r"(?:(?:conf\s*=\s*([0-9]*\.?[0-9]+)\s*,\s*)?)"  # G6: conf= (같은 줄)
-        r"reason\s*=\s*(.*?)(?:\nConfidence:\s*([0-9]*\.?[0-9]+))?"  # G7: reason, G8: 다음 줄 Confidence:
-        r"(?=\nChunk|\Z)",
-        re.IGNORECASE | re.DOTALL
-    )
-    predictions: Dict[str, Dict[str, str]] = {}
-    parsed_blocks = 0
-    files_with_chunks = 0
-
-    for m in analyzing_block_pat.finditer(data):
-        fname = m.group(1).strip()
-        body  = m.group(2)
-        parsed_blocks += 1
-
-        candidates = []
-        for cm in chunk_block_pat.finditer(body):
-            start = int(cm.group(1))
-            step  = int(cm.group(4))
-            # agent는 앞/뒤 어느 그룹에 있어도 우선 사용
-            agent_model = (cm.group(3) or cm.group(5) or "").strip()
-
-            # conf는 같은 줄의 conf=... 우선, 없으면 다음 줄 "Confidence: ..."
-            conf_txt = (cm.group(6) or cm.group(8) or "").strip()
-            try:
-                conf = float(conf_txt) if conf_txt else 0.0
-            except ValueError:
-                conf = 0.0
-
-            candidates.append({
-                "conf": conf,
-                "start": start,
-                "step": step,
-                "agent_model": agent_model,
-            })
-
-        if not candidates:
-            continue
-
-        files_with_chunks += 1
-        # 정렬: conf 내림차순, start 오름차순
-        candidates.sort(key=lambda t: (-t["conf"], t["start"]))
-        best = candidates[0]
-
-        pred_step = best["step"]
-        pred_agent_from_log = best.get("agent_model", "").strip()  # ★ 1-stage: 로그 그대로
-
-        predictions[fname] = {
-            "predicted_agent": pred_agent_from_log,  # history 매핑 없이 모델 출력 그대로
-            "predicted_step": str(pred_step),
-        }
-
-    print(f"--- Predictions Read from {eval_file} (Chunk-Top1 using agent from log) ---")
-    print(f"Parsed 'Analyzing File' blocks: {parsed_blocks}")
-    print(f"Blocks with chunk lines:        {files_with_chunks}")
-    print(f"Files with predictions:         {len(predictions)}")
-    print("===================================================")
-    return predictions
 
 def read_predictions_all_at_once(eval_file: str) -> Dict[str, Dict[str, str]]:
     """
@@ -375,19 +279,19 @@ def read_predictions_step_by_step(eval_file: str) -> Dict[str, Dict[str, str]]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Evaluate agent & step accuracy using Chunk-Top1; agent = history[step-1].role (no reason-text parsing)."
+        description="Evaluate agent & step accuracy, auto-detecting All-at-once(+Window) or Step-by-step(+window) log format, with agent-name normalization."
     )
     parser.add_argument(
         "--data_path",
         type=str,
         required=True,
-        help="Path to the directory containing the ground truth JSON files (also used to read history for role)."
+        help="Path to the directory containing the ground truth JSON files."
     )
     parser.add_argument(
         "--eval_file",
         type=str,
         required=True,
-        help="Path to the evaluation log file containing the chunk lines."
+        help="Path to the evaluation log file containing the predictions."
     )
     args = parser.parse_args()
 
@@ -409,14 +313,11 @@ def main():
             actual_total_files = 0
 
 
-    # 1) 먼저 청크 로그 포맷 시도
-    predictions = read_predictions_chunk_top1(eval_file, data_path)
-    pred_source = "Chunk-Top1"
+    # 1) All-at-once(+Window) 포맷 시도
+    predictions = read_predictions_all_at_once(eval_file)
+    pred_source = "All-at-once(+Window)"
 
-    # 2) 청크 포맷이 0건이면 All-at-once(+Window) 포맷 시도
-    if len(predictions) == 0:
-        predictions = read_predictions_all_at_once(eval_file)
-        pred_source = "All-at-once(+Window)"
+    # 2) 0건이면 Step-by-step(+window) 포맷 시도
     if len(predictions) == 0:
         predictions = read_predictions_step_by_step(eval_file)
         pred_source = "Step-by-step(+window)"
@@ -424,7 +325,6 @@ def main():
     agent_acc, step_acc = evaluate_accuracy(predictions, data_path, actual_total_files)
 
     print(f"\n--- Final Accuracy Results ({pred_source}) ---")
-    print("\n--- Final Accuracy Results (Chunk-Top1 via history.role) ---")
     print(f"Evaluation File: {eval_file}")
     print(f"Data Path:       {data_path}")
     print(f"Agent Accuracy: {agent_acc:.2f}%")

@@ -12,8 +12,6 @@ from openai import OpenAI
 from Lib.utils import (
     all_at_once as gpt_all_at_once,
     step_by_step as gpt_step_by_step,
-    binary_search as gpt_binary_search,
-    chunk_parallel as gpt_chunk_parallel,
     all_at_once_with_window as gpt_all_at_once_2stage,
     step_by_step_with_window as gpt_step_by_step_2stage,
 )
@@ -21,7 +19,6 @@ from Lib.utils import (
 from Lib.local_model import (
     analyze_all_at_once_local,
     analyze_step_by_step_local,
-    analyze_binary_search_local
 )
 
 
@@ -51,7 +48,7 @@ def main():
         "--method",
         type=str,
         required=True,
-        choices=["all_at_once", "step_by_step", "binary_search", "chunk_parallel"],
+        choices=["all_at_once", "step_by_step"],
         help="The analysis method to use."
     )
     parser.add_argument(
@@ -232,23 +229,6 @@ def main():
                             model=args.model,
                             max_tokens=args.max_tokens,
                         )
-                elif args.method == "binary_search":
-                    gpt_binary_search(
-                        client=client_or_model_obj,
-                        directory_path=args.directory_path,
-                        is_handcrafted=args.is_handcrafted,
-                        model=args.model,
-                        max_tokens=args.max_tokens
-                    )
-                elif args.method == "chunk_parallel":
-                    gpt_chunk_parallel(
-                        client=client_or_model_obj,
-                        directory_path=args.directory_path,
-                        is_handcrafted=args.is_handcrafted,
-                        model=args.model,
-                        max_tokens=args.max_tokens
-                    )                    
-                    
             elif model_type == 'local':
                 if args.method == "all_at_once":
                     analyze_all_at_once_local(
@@ -263,21 +243,6 @@ def main():
                         directory_path=args.directory_path,
                         is_handcrafted=args.is_handcrafted,
                         model_family=model_family
-                    )
-                elif args.method == "binary_search":
-                    analyze_binary_search_local(
-                        model_obj=client_or_model_obj,
-                        directory_path=args.directory_path,
-                        is_handcrafted=args.is_handcrafted,
-                        model_family=model_family
-                    )
-                elif args.method == "chunk_parallel":
-                    gpt_chunk_parallel(
-                        client=client_or_model_obj,
-                        directory_path=args.directory_path,
-                        is_handcrafted=args.is_handcrafted,
-                        model=args.model,
-                        max_tokens=args.max_tokens
                     )
 
             else:
