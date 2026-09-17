@@ -1,6 +1,5 @@
 import os
 import json
-import random
 from openai import AzureOpenAI
 from tqdm import tqdm
 # --- Helper Functions ---
@@ -227,149 +226,11 @@ def step_by_step(client: AzureOpenAI, directory_path: str, is_handcrafted: bool,
         print("\n" + "="*50 + "\n")
 
 
-# --- Binary Search Method ---
+# --- Window-Based Final Judge (shared helper for the window-augmentation methods) ---
 
-def _construct_binary_search_prompt(problem, answer, chat_segment_content, range_description, upper_half_desc, lower_half_desc):
-    """Constructs the prompt for the binary search step."""
-    return (
-        "You are an AI assistant tasked with analyzing a segment of a multi-agent conversation. Multiple agents are collaborating to address a user query, with the goal of resolving the query through their collective dialogue.\n"
-        "Your primary task is to identify the location of the most critical mistake within the provided segment. Determine which half of the segment contains the single step where this crucial error occurs, ultimately leading to the failure in resolving the user’s query.\n"
-        f"The problem to address is as follows: {problem}\n"
-        f"The Answer for the problem is: {answer}\n" # Included as per original code - remove if ground truth shouldn't be used
-        f"Review the following conversation segment {range_description}:\n\n{chat_segment_content}\n\n"
-        f"Based on your analysis, predict whether the most critical error is more likely to be located in the upper half ({upper_half_desc}) or the lower half ({lower_half_desc}) of this segment.\n"
-        "Please provide your prediction by responding with ONLY 'upper half' or 'lower half'. Remember, your answer should be based on identifying the mistake that directly contributes to the failure in resolving the user's query. If no single clear error is evident, consider the step you believe is most responsible for the failure, allowing for subjective judgment, and base your answer on that."
-    )
+from typing import Tuple, Dict, Any, Optional
 
-def _report_binary_search_error(chat_history, step, json_file, is_handcrafted):
-    """Reports the identified error step from binary search."""
-    index_agent = "role" if is_handcrafted else "name"
-    entry = chat_history[step]
-    agent_name = entry.get(index_agent, 'Unknown Agent')
-
-    print(f"\nPrediction for {json_file}:")
-    print(f"Agent Name: {agent_name}")
-    print(f"Step Number: {step}")
-    print("\n" + "="*50 + "\n")
-
-def _find_error_in_segment_recursive(client: AzureOpenAI, model: str, max_tokens: int, chat_history: list, problem: str, answer: str, start: int, end: int, json_file: str, is_handcrafted: bool):
-    """Recursive helper function for binary search analysis."""
-    if start > end:
-         print(f"Warning: Invalid range in binary search for {json_file} (start={start}, end={end}). Reporting last valid step.")
-         _report_binary_search_error(chat_history, end if end >= 0 else 0, json_file, is_handcrafted) # Report something reasonable
-         return
-    if start == end:
-        _report_binary_search_error(chat_history, start, json_file, is_handcrafted)
-        return
-
-    index_agent = "role" if is_handcrafted else "name"
-
-    segment_history = chat_history[start : end + 1]
-    if not segment_history:
-        print(f"Warning: Empty segment in binary search for {json_file} (start={start}, end={end}). Cannot proceed.")
-        _report_binary_search_error(chat_history, start, json_file, is_handcrafted)
-        return
-
-    chat_content = "\n".join([
-        f"{entry.get(index_agent, 'Unknown Agent')}: {entry.get('content', '')}"
-        for entry in segment_history
-    ])
-
-    mid = start + (end - start) // 2 
-
-    range_description = f"from step {start} to step {end}"
-    upper_half_desc = f"from step {start} to step {mid}"
-    lower_half_desc = f"from step {mid + 1} to step {end}"
-
-    prompt = _construct_binary_search_prompt(problem, answer, chat_content, range_description, upper_half_desc, lower_half_desc)
-
-    messages = [
-        {"role": "system", "content": "You are an AI assistant specializing in localizing errors in conversation segments."},
-        {"role": "user", "content": prompt}
-    ]
-
-    print(f"Analyzing step {start}-{end} for {json_file}...")
-    result = _make_api_call(client, model, messages, max_tokens)
-
-    if not result:
-        print(f"API call failed for segment {start}-{end}. Stopping binary search for {json_file}.")
-        return
-
-    print(f"LLM Prediction for segment {start}-{end}: {result}")
-    result_lower = result.lower() 
-
-    if "upper half" in result_lower:
-         _find_error_in_segment_recursive(client, model, max_tokens, chat_history, problem, answer, start, mid, json_file, is_handcrafted)
-    elif "lower half" in result_lower:
-         new_start = min(mid + 1, end)
-         _find_error_in_segment_recursive(client, model, max_tokens, chat_history, problem, answer, new_start, end, json_file, is_handcrafted)
-    else:
-        print(f"Warning: Ambiguous response '{result}' from LLM for segment {start}-{end}. Randomly choosing a half.")
-        if random.randint(0, 1) == 0:
-            print("Randomly chose upper half.")
-            _find_error_in_segment_recursive(client, model, max_tokens, chat_history, problem, answer, start, mid, json_file, is_handcrafted)
-        else:
-            print("Randomly chose lower half.")
-            new_start = min(mid + 1, end)
-            _find_error_in_segment_recursive(client, model, max_tokens, chat_history, problem, answer, new_start, end, json_file, is_handcrafted)
-
-
-def binary_search(client: AzureOpenAI, directory_path: str, is_handcrafted: bool, model: str, max_tokens: int):
-    """
-    Analyzes chat history using a binary search approach to find the error step.
-    """
-    print("\n--- Starting Binary Search Analysis ---\n")
-    json_files = _get_sorted_json_files(directory_path)
-
-    for json_file in tqdm(json_files):
-        file_path = os.path.join(directory_path, json_file)
-        data = _load_json_data(file_path)
-        if not data:
-            continue
-
-        chat_history = data.get("history", [])
-        problem = data.get("question", "")
-        answer = data.get("ground_truth", "") # Keep ground truth if needed
-
-        if not chat_history:
-            print(f"Skipping {json_file}: No chat history found.")
-            continue
-
-        print(f"--- Analyzing File: {json_file} ---")
-        _find_error_in_segment_recursive(client, model, max_tokens, chat_history, problem, answer, 0, len(chat_history) - 1, json_file, is_handcrafted)
-        
-        
-        
-        
-# --- Chunk-Parallel Method ---
-
-import re
-from typing import List, Tuple, Dict, Any, Optional
-
-CHUNK_SIZE = 20
-CHUNK_OVERLAP = 5
 FINAL_WINDOW_RADIUS = 5  # ±5 → 총 11 스텝
-
-def _make_chunks(L: int, C: int, O: int) -> List[Tuple[int, int]]:
-    """
-    Return list of (start, end_exclusive) with overlap.
-    Example: L=50, C=20, O=5 -> [(0,20),(15,35),(30,50)]
-    """
-    chunks = []
-    if L <= 0 or C <= 0:
-        return chunks
-    s = 0
-    while s < L:
-        e = min(L, s + C)
-        chunks.append((s, e))  # [s:e)
-        if e == L:
-            break
-        s = max(0, e - O)
-        if s >= L:
-            break
-        if s == 0 and e == L:
-            break
-    return chunks
 
 def _render_segment(chat_history: list, start: int, end_exclusive: int, is_handcrafted: bool) -> str:
     """
@@ -383,90 +244,6 @@ def _render_segment(chat_history: list, start: int, end_exclusive: int, is_handc
         content = entry.get("content", "")
         seg.append(f"Step {i} - {agent}: {content}")
     return "\n".join(seg)
-
-def _parse_chunk_response(text: str) -> Tuple[Optional[int], Optional[float], str]:
-    """
-    Expect formats like:
-      Step: 37
-      Reason: ...
-      Confidence: 0.82
-    Return (step, confidence, reason). If parse fails, step/confidence may be None.
-    """
-    step = None
-    conf = None
-    reason = ""
-    agent= None
-    # Step
-    m = re.search(r"step\s*[:=]\s*(\d+)", text, flags=re.IGNORECASE)
-    if m:
-        try:
-            step = int(m.group(1))
-        except:
-            step = None
-    # Confidence
-    m = re.search(r"confidence score\s*[:=]\s*([01](?:\.\d+)?)", text, flags=re.IGNORECASE)
-    if m:
-        try:
-            conf = float(m.group(1))
-        except:
-            conf = None
-    # Reason
-    m = re.search(r"reason\s*[:=]\s*(.+)", text, flags=re.IGNORECASE | re.DOTALL)
-    if m:
-        reason = m.group(1).strip()
-    m = re.search(r"agent\s*[:=]\s*([^\r\n]+)", text, flags=re.IGNORECASE)
-    if m: 
-        agent = m.group(1).strip()
-
-    return agent, step, conf, reason
-
-def _judge_chunk(
-    client: AzureOpenAI,
-    model: str,
-    max_tokens: int,
-    problem: str,
-    ground_truth: str,
-    segment_text: str,
-    chunk_range: Tuple[int, int]
-) -> Dict[str, Any]:
-    """
-    Ask LLM to pick exactly one suspicious step in the chunk, with reason and confidence [0,1].
-    Returns dict with keys: {'step', 'confidence', 'reason', 'raw'}
-    """
-    start, end_ex = chunk_range
-    prompt = (
-        "You are an AI assistant tasked with evaluating the correctness of each step in an ongoing multi-agent conversation aimed at solving a real-world problem.\n"
-        f"Problem: {problem}\n"
-        f"Answer: {ground_truth}\n"
-        f"Consider ONLY the following conversation steps (global indices {start} to {end_ex-1}):\n\n"
-        f"{segment_text}\n\n"
-        "Select exactly ONE step most likely to be the earliest critical mistake.\n"
-        "CALIBRATION RUBRIC for Confidence score(strictly follow):\n"
-        "0.0 ≤ Confidence score < 0.2 : very weak evidence (speculative, multiple plausible alternatives)\n"
-        "0.2 ≤ Confidence score < 0.4 : weak evidence (some hints but contradictions/unknowns remain)\n"
-        "0.4 ≤ Confidence score < 0.6 : moderate evidence (clear signals but with notable uncertainty)\n"
-        "0.6 ≤ Confidence score < 0.8 : strong evidence (direct indicators, few plausible alternatives)\n"
-        "0.8 ≤ Confidence score ≤ 1.0 : very strong evidence (direct contradiction to goal/instructions with explicit traceable impact)\n"
-        "If evidence is not explicit and traceable, keep Confidence score ≤ 0.4.\n\n"
-        "Respond ONLY in the format:\n"
-        "Agent: <agent name as shown in the segment>\n"
-        "Step: <global step integer>\n"
-        "Reason: <brief, traceable reason citing concrete step content>\n"
-        "Confidence score: <number between 0 and 1 with one decimal place>\n"
-    )
-    messages = [
-        {"role": "system", "content": "You are a precise, calibrated LLM judge for error localization."},
-        {"role": "user", "content": prompt},
-    ]
-    resp = _make_api_call(client, model, messages, max_tokens) or ""
-    agent, step, conf, reason = _parse_chunk_response(resp)
-    # Clamp confidence if provided
-    if conf is not None:
-        conf = max(0.0, min(1.0, conf))
-    # Sanity: ensure the step falls inside the chunk; if not, null it
-    if step is not None and not (start <= step < end_ex):
-        step = None
-    return {"agent": agent, "step": step, "confidence": conf, "reason": reason, "raw": resp, "range": (start, end_ex)}
 
 def _parse_final_response(text: str) -> Tuple[Optional[int], str]:
     """
@@ -535,101 +312,6 @@ def _final_window_judge(
         step = pivot_step  # fallback to the pivot if parsing/window check fails
     return {"agent": agent, "step": step, "reason": reason, "raw": resp, "window": (win_start, win_end)}
 
-def chunk_parallel(client: AzureOpenAI, directory_path: str, is_handcrafted: bool, model: str, max_tokens: int):
-    """
-    Implements the requested Chunk parallel pipeline:
-      1) Chunk chat history with size=20, overlap=5.
-      2) For each chunk, run LLM judge to select the most suspicious step with a reason and confidence [0..1].
-      3) Pick the single global top-1 step across chunks by confidence.
-      4) Expand ±5 steps around that pivot (total 11) and run the final judge to pick the final single step.
-      5) Print results.
-    """
-    print("\n--- Starting Chunk-Parallel Analysis ---\n")
-    json_files = _get_sorted_json_files(directory_path)
-    index_agent = "role" if is_handcrafted else "name"
-
-    for json_file in tqdm(json_files):
-        file_path = os.path.join(directory_path, json_file)
-        data = _load_json_data(file_path)
-        if not data:
-            continue
-
-        chat_history = data.get("history", [])
-        problem = data.get("question", "")
-        ground_truth = data.get("ground_truth", "")
-
-        if not chat_history:
-            print(f"Skipping {json_file}: No chat history found.")
-            continue
-
-        L = len(chat_history)
-        chunks = _make_chunks(L, CHUNK_SIZE, CHUNK_OVERLAP)
-        if not chunks:
-            print(f"Skipping {json_file}: Cannot form chunks.")
-            continue
-
-        print(f"--- Analyzing File: {json_file} ---")
-        # 1) 청크 병렬(실제로는 순차 호출이지만, 로직상 청크 단위 독립)
-        per_chunk_results: List[Dict[str, Any]] = []
-        for (s, e) in chunks:
-            seg_text = _render_segment(chat_history, s, e, is_handcrafted)
-            res = _judge_chunk(client, model, max_tokens, problem, ground_truth, seg_text, (s, e))
-            per_chunk_results.append(res)
-            # 로그 요약
-            disp_step = res.get("step")
-            disp_conf = res.get("confidence")
-
-            # is_handcrafted 규칙에 따라 agent 키 선택
-            idx_key = "role" if is_handcrafted else "name"
-            if disp_step is not None:
-                agent_name = chat_history[disp_step].get(idx_key, "Unknown Agent")
-            else:
-                agent_name = "N/A"
-
-            print(
-                f"Chunk [{s}:{e}) → agent={agent_name}, step={disp_step}, conf={disp_conf}, "
-                f"reason={res.get('reason','')}"
-            )
-        # 2) 신뢰도 기준 Top-1 선택 (conf가 없으면 0 취급)
-        best = None
-        best_conf = -1.0
-        best_step = None
-        for r in per_chunk_results:
-            step = r.get("step")
-            conf = r.get("confidence")
-            if step is None:
-                continue
-            conf_val = float(conf) if (conf is not None) else 0.0
-
-            if (conf_val > best_conf) or (conf_val == best_conf and (best_step is None or step < best_step)):
-                best = r
-                best_conf = conf_val
-                best_step = step
-
-        if best is None or best.get("step") is None:
-            print(f"Warning: No valid chunk decision for {json_file}. Falling back to mid step.")
-            pivot = L // 2
-        else:
-            pivot = int(best["step"])
-
-        print(f"\nTop-1 by confidence → pivot step = {pivot} (conf={best_conf})")
-
-        # 3) 최종 윈도우 judge
-        final_res = _final_window_judge(client, model, max_tokens, problem, ground_truth, chat_history, is_handcrafted, pivot)
-        final_step = final_res["step"]
-        # 최종 에이전트명 추출
-        entry = chat_history[final_step]
-        agent_name = entry.get(index_agent, "Unknown Agent")
-
-        print(f"\n=== Final Prediction for {json_file} ===")
-        print(f"Agent Name: {agent_name}")
-        print(f"Step Number: {final_step}")
-        print(f"Reason: {final_res.get('reason','')}")
-        print(f"Pivot (from chunks): {pivot}, Window: {final_res['window']}")
-        print("=" * 50 + "\n")
-        
-
-
 def all_at_once_with_window(client: AzureOpenAI, directory_path: str, is_handcrafted: bool, model: str, max_tokens: int):
     """
     1) 전체 대화로 1-stage 예측(Agent/Step/Reason)
@@ -689,7 +371,7 @@ def all_at_once_with_window(client: AzureOpenAI, directory_path: str, is_handcra
         L = len(chat_history)
         pivot = step_1 if isinstance(step_1, int) and 0 <= step_1 < L else (L // 2)
 
-        # 2-stage 최종 판정 (기존 chunk_parallel의 _final_window_judge 재사용)
+        # 2-stage 최종 판정 (윈도우 기반 최종 판정 재사용)
         final_res = _final_window_judge(
             client=client,
             model=model,
